@@ -1,71 +1,49 @@
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import time
+from typing import List
+import concurrent.futures
 
 completedTasks = []
 
+
 class Task:
 
-    def __init__(self, id: str, dependencies: str, processingTime: int, priority: int):
+    def __init__(self, id: str, dependencies: List[str], processingTime: int, priority: int):
         self.id = id
         self.dependencies = dependencies
         self.processingTime = processingTime
         self.priority = priority
 
     def execute_task(self):
-        # Using Asyncio To Create A non-blocking Sleep 
-        asyncio.sleep(self.processingTime)
+        time.sleep(self.processingTime)
         completedTasks.append(self.id)
         print(f"Task {self.id} completed.")
+        print(f"Completed Tasks Count: {len(completedTasks)}")
 
 
 class TaskSchedular:
 
     def __init__(self, max_concurrency: int):
         self.max_concurrency = max_concurrency
-        self.tasks = []
-        self.incomplete_priorities = []
-
-    def finish_task_recursively(self, executor):
-        for task in self.incomplete_priorities:
-            if all(depencency in completedTasks and task["id"] not in completedTasks for depencency in task["dependencies"]):
-                executor.run(Task(id=task["id"], dependencies=task["dependencies"],
-                                  priority=task["priority"], processingTime=task["processingTime"]))
-                print(f"Tasks Completed: {len(completedTasks)}")
-            else:
-                pass
-        if len(self.tasks) != len(completedTasks):
-            self.finish_task_recursively(executor)
-        return 
+        self.tasks: List[Task] = []
 
     def add_tasks(self, tasks: list):
         """
-        Adding Tasks to a Class initialized List in the oder of priority
-        """"
+        Adding Tasks to a Class initialized List in the order of priority
+        """
         for task in tasks:
-            self.tasks.insert(task["priority"]-1, task)
+            self.tasks.append(Task(id=task["id"], dependencies=task["dependencies"], processingTime=task["processingTime"], priority=task["priority"]))
+        self.tasks.sort(key=lambda t: t.priority)
         return "Tasks Added"
 
     def run(self):
         # Creating a ThreadPool to Execute Tasks Concurrently, While also sharing same Memory Space for Tasks Tracking
-        with ThreadPoolExecutor(self.max_concurrency) as executor:
-            for task in self.tasks:
-                # Differiantiating the Task/s with Zero Dependencies to Start in the Beginning
-                if not task["dependencies"]:
-                    executor.run(Task(id=task["id"], dependencies=task["dependencies"], 
-                                      priority=task["priority"], processingTime=task["processingTime"]))
-                    print(f"Tasks Completed: {len(completedTasks)}")
-                
-                else:
-                    # Executing Tasks with All its Dependencies Finished Already
-                    if all(depencency in completedTasks for depencency in task["dependencies"]):
-                        executor.run(Task(id=task["id"], dependencies=task["dependencies"],
-                                          priority=task["priority"], processingTime=task["processingTime"]))
-                        print(f"Tasks Completed: {len(completedTasks)}")
-                    # Adding the Tasks with incomplete depencencies to another Class List
-                    else:
-                        self.incomplete_priorities.append(task)
-            # Finished unexecuted Task Recursively while Making sure All the depencies are Executed Prior to the Task
-            self.finish_task_recursively(executor)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
+            while self.tasks:
+                for task in self.tasks[:]:
+                    if all(dep in completedTasks for dep in task.dependencies):
+                        executor.submit(task.execute_task)
+                        self.tasks.remove(task)
+                concurrent.futures.as_completed()
         return "Stopping Schedular"
 
 
